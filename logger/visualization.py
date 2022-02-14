@@ -1,5 +1,5 @@
 import importlib
-from datetime import datetime
+from utils import Timer
 
 
 class TensorboardWriter():
@@ -23,8 +23,9 @@ class TensorboardWriter():
 
             if not succeeded:
                 message = "Warning: visualization (Tensorboard) is configured to use, but currently not installed on " \
-                    "this machine. Please install TensorboardX with 'pip install tensorboardx', upgrade PyTorch to " \
-                    "version >= 1.1 to use 'torch.utils.tensorboard' or turn off the option in the 'config.json' file."
+                    "this machine. Please install either TensorboardX with 'pip install tensorboardx', upgrade " \
+                    "PyTorch to version >= 1.1 for using 'torch.utils.tensorboard' or turn off the option in " \
+                    "the 'config.json' file."
                 logger.warning(message)
 
         self.step = 0
@@ -35,17 +36,17 @@ class TensorboardWriter():
             'add_text', 'add_histogram', 'add_pr_curve', 'add_embedding'
         }
         self.tag_mode_exceptions = {'add_histogram', 'add_embedding'}
-        self.timer = datetime.now()
+            
+        self.timer = Timer()
 
     def set_step(self, step, mode='train'):
         self.mode = mode
         self.step = step
         if step == 0:
-            self.timer = datetime.now()
+            self.timer.reset()
         else:
-            duration = datetime.now() - self.timer
-            self.add_scalar('steps_per_sec', 1 / duration.total_seconds())
-            self.timer = datetime.now()
+            duration = self.timer.check()
+            self.add_scalar('steps_per_sec', 1 / duration)
 
     def __getattr__(self, name):
         """

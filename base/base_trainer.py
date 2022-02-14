@@ -1,20 +1,25 @@
+import dill
 import torch
 from abc import abstractmethod
 from numpy import inf
 from logger import TensorboardWriter
 
-
 class BaseTrainer:
     """
     Base class for all trainers
     """
-    def __init__(self, model, criterion, metric_ftns, optimizer, config):
+    def __init__(self, model, loss, metrics, optimizer, config):
         self.config = config
         self.logger = config.get_logger('trainer', config['trainer']['verbosity'])
 
-        self.model = model
-        self.criterion = criterion
-        self.metric_ftns = metric_ftns
+        # setup GPU device if available, move model into configured device
+        self.device, device_ids = self._prepare_device(config['n_gpu'])
+        self.model = model.to(self.device)
+        if len(device_ids) > 1:
+            self.model = torch.nn.DataParallel(model, device_ids=device_ids)
+
+        self.loss = loss
+        self.metrics = metrics
         self.optimizer = optimizer
 
         cfg_trainer = config['trainer']
@@ -32,8 +37,6 @@ class BaseTrainer:
 
             self.mnt_best = inf if self.mnt_mode == 'min' else -inf
             self.early_stop = cfg_trainer.get('early_stop', inf)
-            if self.early_stop <= 0:
-                self.early_stop = inf
 
         self.start_epoch = 1
 
@@ -58,13 +61,18 @@ class BaseTrainer:
         """
         Full training logic
         """
-        not_improved_count = 0
         for epoch in range(self.start_epoch, self.epochs + 1):
             result = self._train_epoch(epoch)
 
             # save logged informations into log dict
             log = {'epoch': epoch}
-            log.update(result)
+            for key, value in result.items():
+                if key == 'metrics':
+                    log.update({mtr.__name__: value[i] for i, mtr in enumerate(self.metrics)})
+                elif key == 'val_metrics':
+                    log.update({'val_' + mtr.__name__: value[i] for i, mtr in enumerate(self.metrics)})
+                else:
+                    log[key] = value
 
             # print logged informations to the screen
             for key, value in log.items():
@@ -82,6 +90,7 @@ class BaseTrainer:
                                         "Model performance monitoring is disabled.".format(self.mnt_metric))
                     self.mnt_mode = 'off'
                     improved = False
+                    not_improved_count = 0
 
                 if improved:
                     self.mnt_best = log[self.mnt_metric]
@@ -97,6 +106,23 @@ class BaseTrainer:
 
             if epoch % self.save_period == 0:
                 self._save_checkpoint(epoch, save_best=best)
+
+    def _prepare_device(self, n_gpu_use):
+        """
+        setup GPU device if available, move model into configured device
+        """
+        n_gpu = torch.cuda.device_count()
+        if n_gpu_use > 0 and n_gpu == 0:
+            self.logger.warning("Warning: There\'s no GPU available on this machine,"
+                                "training will be performed on CPU.")
+            n_gpu_use = 0
+        if n_gpu_use > n_gpu:
+            self.logger.warning("Warning: The number of GPU\'s configured to use is {}, but only {} are available "
+                                "on this machine.".format(n_gpu_use, n_gpu))
+            n_gpu_use = n_gpu
+        device = torch.device('cuda:0' if n_gpu_use > 0 else 'cpu')
+        list_ids = list(range(n_gpu_use))
+        return device, list_ids
 
     def _save_checkpoint(self, epoch, save_best=False):
         """
@@ -116,11 +142,11 @@ class BaseTrainer:
             'config': self.config
         }
         filename = str(self.checkpoint_dir / 'checkpoint-epoch{}.pth'.format(epoch))
-        torch.save(state, filename)
+        torch.save(state, filename, pickle_module=dill)
         self.logger.info("Saving checkpoint: {} ...".format(filename))
         if save_best:
             best_path = str(self.checkpoint_dir / 'model_best.pth')
-            torch.save(state, best_path)
+            torch.save(state, best_path, pickle_module=dill)
             self.logger.info("Saving current best: model_best.pth ...")
 
     def _resume_checkpoint(self, resume_path):
@@ -131,15 +157,15 @@ class BaseTrainer:
         """
         resume_path = str(resume_path)
         self.logger.info("Loading checkpoint: {} ...".format(resume_path))
-        checkpoint = torch.load(resume_path)
+        checkpoint = torch.load(resume_path, pickle_module=dill)
         self.start_epoch = checkpoint['epoch'] + 1
-        self.mnt_best = checkpoint['monitor_best']
+        self.mnt_best = inf #checkpoint['monitor_best'] # TODO: fix the case where the loaded checkpoint is worse due to quantization.
 
         # load architecture params from checkpoint.
         if checkpoint['config']['arch'] != self.config['arch']:
             self.logger.warning("Warning: Architecture configuration given in config file is different from that of "
                                 "checkpoint. This may yield an exception while state_dict is being loaded.")
-        self.model.load_state_dict(checkpoint['state_dict'])
+        self.model.load_state_dict(checkpoint['state_dict'], strict=False) # Masked layers have additional buffers that are not in state_dict
 
         # load optimizer state from checkpoint only when optimizer type is not changed.
         if checkpoint['config']['optimizer']['type'] != self.config['optimizer']['type']:

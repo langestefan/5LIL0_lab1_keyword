@@ -1,74 +1,24 @@
-# PyTorch Template Project
-PyTorch deep learning project made easy.
+# Efficient keyword spotting using Deep Learning
+This repository contains the materials for Lab 1 of the Intelligent Architectures course (5LIL0). This aim of this assignment is to introduce students to the concepts of model design and optimization. 
 
-<!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
-
-<!-- code_chunk_output -->
-
-* [PyTorch Template Project](#pytorch-template-project)
-	* [Requirements](#requirements)
-	* [Features](#features)
-	* [Folder Structure](#folder-structure)
-	* [Usage](#usage)
-		* [Config file format](#config-file-format)
-		* [Using config files](#using-config-files)
-		* [Resuming from checkpoints](#resuming-from-checkpoints)
-    * [Using Multiple GPU](#using-multiple-gpu)
-	* [Customization](#customization)
-		* [Custom CLI options](#custom-cli-options)
-		* [Data Loader](#data-loader)
-		* [Trainer](#trainer)
-		* [Model](#model)
-		* [Loss](#loss)
-		* [metrics](#metrics)
-		* [Additional logging](#additional-logging)
-		* [Validation data](#validation-data)
-		* [Checkpoints](#checkpoints)
-    * [Tensorboard Visualization](#tensorboard-visualization)
-	* [Contribution](#contribution)
-	* [TODOs](#todos)
-	* [License](#license)
-	* [Acknowledgements](#acknowledgements)
-
-<!-- /code_chunk_output -->
-
-## Requirements
-* Python >= 3.5 (3.6 recommended)
-* PyTorch >= 0.4 (1.2 recommended)
-* tqdm (Optional for `test.py`)
-* tensorboard >= 1.14 (see [Tensorboard Visualization](#tensorboard-visualization))
-
-## Features
-* Clear folder structure which is suitable for many deep learning projects.
-* `.json` config file support for convenient parameter tuning.
-* Customizable command line options for more convenient parameter tuning.
-* Checkpoint saving and resuming.
-* Abstract base classes for faster development:
-  * `BaseTrainer` handles checkpoint saving/resuming, training process logging, and more.
-  * `BaseDataLoader` handles batch generation, data shuffling, and validation data splitting.
-  * `BaseModel` provides basic model summary.
+## Installation
+See requirements.txt for Python3 dependencies. Install dependencies using `python3 -m pip install --user -r requirements.txt`.
 
 ## Folder Structure
+The project structure is adopted from `https://github.com/victoresque/pytorch-template`. The most important directories are explained below:
   ```
-  pytorch-template/
+  ./
   │
-  ├── train.py - main script to start training
-  ├── test.py - evaluation of trained model
+  ├── train.py - main script to start training/finetuning
+  ├── quantize.py - script to perform post-training quantization
+  ├── prune.py - script to perform post-training pruning
+  ├── test.py - evaluation of trained/quantized/pruned/finetuned model
+  ├── profile.py - script to collect network statistics (e.g. #MACs, Model Size)
   │
-  ├── config.json - holds configuration for training
+  ├── config_lenet5_keywords.yml - holds configuration for training and optimization
   ├── parse_config.py - class to handle config file and cli options
   │
-  ├── new_project.py - initialize new project with template files
-  │
-  ├── base/ - abstract base classes
-  │   ├── base_data_loader.py
-  │   ├── base_model.py
-  │   └── base_trainer.py
-  │
-  ├── data_loader/ - anything about data loading goes here
-  │   └── data_loaders.py
-  │
-  ├── data/ - default directory for storing input data
+  ├── data/ - directory where dataset is stored
   │
   ├── model/ - models, losses, and metrics
   │   ├── model.py
@@ -77,15 +27,7 @@ PyTorch deep learning project made easy.
   │
   ├── saved/
   │   ├── models/ - trained models are saved here
-  │   └── log/ - default logdir for tensorboard and logging output
-  │
-  ├── trainer/ - trainers
-  │   └── trainer.py
-  │
-  ├── logger/ - module for tensorboard visualization and logging
-  │   ├── visualization.py
-  │   ├── logger.py
-  │   └── logger_config.json
+  │   └── log/ - default logdir for tensorboardX and logging output
   │  
   └── utils/ - small utility functions
       ├── util.py
@@ -93,286 +35,185 @@ PyTorch deep learning project made easy.
   ```
 
 ## Usage
-The code in this repo is an MNIST example of the template.
-Try `python train.py -c config.json` to run code.
+The code in this repo contains a baseline example on the Speech Recognition dataset. Try 
 
-### Config file format
-Config files are in `.json` format:
-```javascript
-{
-  "name": "Mnist_LeNet",        // training session name
-  "n_gpu": 1,                   // number of GPUs to use for training.
-  
-  "arch": {
-    "type": "MnistModel",       // name of model architecture to train
-    "args": {
+  ```
+  python3 train.py -c config_lenet5_keywords.yml
+  ```
 
-    }                
-  },
-  "data_loader": {
-    "type": "MnistDataLoader",         // selecting data loader
-    "args":{
-      "data_dir": "data/",             // dataset path
-      "batch_size": 64,                // batch size
-      "shuffle": true,                 // shuffle training data before splitting
-      "validation_split": 0.1          // size of validation dataset. float(portion) or int(number of samples)
-      "num_workers": 2,                // number of cpu processes to be used for data loading
-    }
-  },
-  "optimizer": {
-    "type": "Adam",
-    "args":{
-      "lr": 0.001,                     // learning rate
-      "weight_decay": 0,               // (optional) weight decay
-      "amsgrad": true
-    }
-  },
-  "loss": "nll_loss",                  // loss
-  "metrics": [
-    "accuracy", "top_k_acc"            // list of metrics to evaluate
-  ],                         
-  "lr_scheduler": {
-    "type": "StepLR",                  // learning rate scheduler
-    "args":{
-      "step_size": 50,          
-      "gamma": 0.1
-    }
-  },
-  "trainer": {
-    "epochs": 100,                     // number of training epochs
-    "save_dir": "saved/",              // checkpoints are saved in save_dir/models/name
-    "save_freq": 1,                    // save checkpoints every save_freq epochs
-    "verbosity": 2,                    // 0: quiet, 1: per epoch, 2: full
-  
-    "monitor": "min val_loss"          // mode and metric for model performance monitoring. set 'off' to disable.
-    "early_stop": 10	                 // number of epochs to wait before early stop. set 0 to disable.
-  
-    "tensorboard": true,               // enable tensorboard visualization
-  }
-}
+to train a simple model. After training you can test the model with
+
+  ```
+  python3 test.py -r saved/models/KeywordLeNet5Clone_exp1/.../model_best.pth
+  ```
+which should give you a similar accuracy as shown below:
+```console
+Loading checkpoint: saved/models/KeywordLeNet5Clone_exp1/0906_191755/model_best.pth ...
+Predicted     0    1    2    3   All
+True                                
+0          2411   26   65   51  2553
+1            80  337    0    0   417
+2            92    0  252    4   348
+3            65    0    0  289   354
+All        2648  363  317  344  3672
+Metrics: {'loss': 0.2813729564283928, 'top1': 0.8956971677559913}
+```
+The confusion matrix shows you how the model performed on different classes. As can be seen, most of the samples in this test set are in the zero-class (background noise).
+
+To establish an optimization baseline you can run
+
+  ```
+  python3 profile.py -r saved/models/KeywordLeNet5Clone_exp1/.../model_best.pth
+  ```
+which will print some relevant performance metrics
+```console
+...
+MACs/classification: 170864
+Number of Parameters: 12764
+Model Size:
+  - Weights: 398kB
+  - Activations: 306kB
+Accuracy: 89.56%
 ```
 
-Add addional configurations if you need.
+### Quantization
+After training the model can be quantized. Weight and activation quantization helps to reduce the size of the model and intermediate results. Additionally it enables more efficient integer-based inference, compared to the standard single-precision floating-point model. Quantization might also result in speedups if, for example, the reference implementation was memory-bound. Additionally, reductions in bitwidth can potentially be exploited by specialized (vector-)processors, such as the ARM NEON coprocessor, which can perform 4x32b, 8x16b or 16x8b operations in parallel.
 
-### Using config files
-Modify the configurations in `.json` config files, then run:
-
+The quantization procedure aims to reduce the bitwidth of weights and activations until a user-defined error margin is exceeded. To quantize a model try
   ```
-  python train.py --config config.json
-  ```
-
-### Resuming from checkpoints
-You can resume from a previously saved checkpoint by:
-
-  ```
-  python train.py --resume path/to/checkpoint
+  python3 quantize.py -r saved/models/KeywordLeNet5Clone_exp1/.../model_best.pth
   ```
 
-### Using Multiple GPU
-You can enable multi-GPU training by setting `n_gpu` argument of the config file to larger number.
-If configured to use smaller number of gpu than available, first n devices will be used by default.
-Specify indices of available GPUs by cuda environmental variable.
+which results in the following output:
+
+```console
+...
+---------------------------------------------
+Network quantization results.
+Baseline float32: 0.90323
+Conv layer weights:
+    bitwidth: 16 => top1: 0.90348
+    bitwidth:  8 => top1: 0.88827
+    bitwidth:  4 => top1: 0.79958
+    bitwidth:  2 => top1: 0.68302
+FC layer weights:
+    bitwidth: 16 => top1: 0.90323
+    bitwidth:  8 => top1: 0.89917
+    bitwidth:  4 => top1: 0.78620
+    bitwidth:  2 => top1: 0.10613
+Conv/FC inputs/activations:
+    bitwidth: 16 => top1: 0.90348
+    bitwidth:  8 => top1: 0.89693
+    bitwidth:  4 => top1: 0.55120
+Dynamic fixed point net:
+Conv weights bitwidth: 4
+FC weights bitwidth: 4
+Activations bitwidth: 8
+Accuracy: 0.86599
+---------------------------------------------
+Saving config: saved/models/KeywordLeNet5Clone_exp1/.../quantization.yml ...
+
+```
+
+A 4-bit fixed-point data format has been chosen for weights convolutional layers, and an 8-bit format is chosen for the activations of all layers and weights in fully-connected layers. The final top-1 validation accuracy of the reduced-precision network is 86.60%, which is a bit worse than the initial 90.32% of the full-precision model.
+
+The quantization solution is saved in a `quantization.yml` file. To apply the test set to this solution try
+
   ```
-  python train.py --device 2,3 -c config.json
-  ```
-  This is equivalent to
-  ```
-  CUDA_VISIBLE_DEVICES=2,3 python train.py -c config.py
-  ```
-
-## Customization
-
-### Project initialization
-Use the `new_project.py` script to make your new project directory with template files.
-`python new_project.py ../NewProject` then a new project folder named 'NewProject' will be made.
-This script will filter out unneccessary files like cache, git files or readme file. 
-
-### Custom CLI options
-
-Changing values of config file is a clean, safe and easy way of tuning hyperparameters. However, sometimes
-it is better to have command line options if some values need to be changed too often or quickly.
-
-This template uses the configurations stored in the json file by default, but by registering custom options as follows
-you can change some of them using CLI flags.
-
-  ```python
-  # simple class-like object having 3 attributes, `flags`, `type`, `target`.
-  CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
-  options = [
-      CustomArgs(['--lr', '--learning_rate'], type=float, target=('optimizer', 'args', 'lr')),
-      CustomArgs(['--bs', '--batch_size'], type=int, target=('data_loader', 'args', 'batch_size'))
-      # options added here can be modified by command line flags.
-  ]
-  ```
-`target` argument should be sequence of keys, which are used to access that option in the config dict. In this example, `target` 
-for the learning rate option is `('optimizer', 'args', 'lr')` because `config['optimizer']['args']['lr']` points to the learning rate.
-`python train.py -c config.json --bs 256` runs training with options given in `config.json` except for the `batch size`
-which is increased to 256 by command line options.
-
-
-### Data Loader
-* **Writing your own data loader**
-
-1. **Inherit ```BaseDataLoader```**
-
-    `BaseDataLoader` is a subclass of `torch.utils.data.DataLoader`, you can use either of them.
-
-    `BaseDataLoader` handles:
-    * Generating next batch
-    * Data shuffling
-    * Generating validation data loader by calling
-    `BaseDataLoader.split_validation()`
-
-* **DataLoader Usage**
-
-  `BaseDataLoader` is an iterator, to iterate through batches:
-  ```python
-  for batch_idx, (x_batch, y_batch) in data_loader:
-      pass
-  ```
-* **Example**
-
-  Please refer to `data_loader/data_loaders.py` for an MNIST data loading example.
-
-### Trainer
-* **Writing your own trainer**
-
-1. **Inherit ```BaseTrainer```**
-
-    `BaseTrainer` handles:
-    * Training process logging
-    * Checkpoint saving
-    * Checkpoint resuming
-    * Reconfigurable performance monitoring for saving current best model, and early stop training.
-      * If config `monitor` is set to `max val_accuracy`, which means then the trainer will save a checkpoint `model_best.pth` when `validation accuracy` of epoch replaces current `maximum`.
-      * If config `early_stop` is set, training will be automatically terminated when model performance does not improve for given number of epochs. This feature can be turned off by passing 0 to the `early_stop` option, or just deleting the line of config.
-
-2. **Implementing abstract methods**
-
-    You need to implement `_train_epoch()` for your training process, if you need validation then you can implement `_valid_epoch()` as in `trainer/trainer.py`
-
-* **Example**
-
-  Please refer to `trainer/trainer.py` for MNIST training.
-
-* **Iteration-based training**
-
-  `Trainer.__init__` takes an optional argument, `len_epoch` which controls number of batches(steps) in each epoch.
-
-### Model
-* **Writing your own model**
-
-1. **Inherit `BaseModel`**
-
-    `BaseModel` handles:
-    * Inherited from `torch.nn.Module`
-    * `__str__`: Modify native `print` function to prints the number of trainable parameters.
-
-2. **Implementing abstract methods**
-
-    Implement the foward pass method `forward()`
-
-* **Example**
-
-  Please refer to `model/model.py` for a LeNet example.
-
-### Loss
-Custom loss functions can be implemented in 'model/loss.py'. Use them by changing the name given in "loss" in config file, to corresponding name.
-
-### Metrics
-Metric functions are located in 'model/metric.py'.
-
-You can monitor multiple metrics by providing a list in the configuration file, e.g.:
-  ```json
-  "metrics": ["accuracy", "top_k_acc"],
+  python3 test.py -r saved/models/KeywordLeNet5Clone_exp1/.../model_best.pth \
+    -q saved/models/KeywordLeNet5Clone_exp1/.../quantization.yml
   ```
 
-### Additional logging
-If you have additional information to be logged, in `_train_epoch()` of your trainer class, merge them with `log` as shown below before returning:
+The accuracy on the test set should be approximately the same as the validation set accuracy.
 
-  ```python
-  additional_log = {"gradient_norm": g, "sensitivity": s}
-  log.update(additional_log)
-  return log
-  ```
 
-### Testing
-You can test trained model by running `test.py` passing path to the trained checkpoint by `--resume` argument.
+It should be noted that the inference is not actually performed in fixed-point integers. Instead, the range and precision (step size) of weights and inputs is reduced before and after the convolutional operator. The implementation of these simulated fixed-point layers can be found in `optimization/utility/layers.py`.
 
-### Validation data
-To split validation data from a data loader, call `BaseDataLoader.split_validation()`, then it will return a data loader for validation of size specified in your config file.
-The `validation_split` can be a ratio of validation set per total data(0.0 <= float < 1.0), or the number of samples (0 <= int < `n_total_samples`).
+The quantization procedure is inspired by the approach of [P. Gysel et al. (2016)](https://arxiv.org/abs/1604.03168).
 
-**Note**: the `split_validation()` method will modify the original data loader
-**Note**: `split_validation()` will return `None` if `"validation_split"` is set to `0`
 
-### Checkpoints
-You can specify the name of the training session in config files:
-  ```json
-  "name": "MNIST_LeNet",
-  ```
+### Pruning
+Pruning aims to the model size by removing non-important weights. In this assignment we use a post-training kernel-pruning method. Kernel-pruning means that complete kernels are being removed. Removing complete kernels results in a speedup that is almost directly proportional to the removed workload.
 
-The checkpoints will be saved in `save_dir/name/timestamp/checkpoint_epoch_n`, with timestamp in mmdd_HHMMSS format.
-
-A copy of config file will be saved in the same folder.
-
-**Note**: checkpoints contain:
-  ```python
-  {
-    'arch': arch,
-    'epoch': epoch,
-    'state_dict': self.model.state_dict(),
-    'optimizer': self.optimizer.state_dict(),
-    'monitor_best': self.mnt_best,
-    'config': self.config
-  }
-  ```
-
-### Tensorboard Visualization
-This template supports Tensorboard visualization by using either  `torch.utils.tensorboard` or [TensorboardX](https://github.com/lanpa/tensorboardX).
-
-1. **Install**
-
-    If you are using pytorch 1.1 or higher, install tensorboard by 'pip install tensorboard>=1.14.0'.
-
-    Otherwise, you should install tensorboardx. Follow installation guide in [TensorboardX](https://github.com/lanpa/tensorboardX).
-
-2. **Run training** 
-
-    Make sure that `tensorboard` option in the config file is turned on.
-
+To prune the trained model we execute
     ```
-     "tensorboard" : true
+    python3 prune.py -r saved/models/KeywordLeNet5Clone_exp1/.../model_best.pth
     ```
+which results in the following output
 
-3. **Open Tensorboard server** 
+```console
+...
 
-    Type `tensorboard --logdir saved/log/` at the project root, then server will open at `http://localhost:6006`
+Error margin exceeded; save previous solution!
 
-By default, values of loss and metrics specified in config file, input images, and histogram of model parameters will be logged.
-If you need more visualizations, use `add_scalar('tag', data)`, `add_image('tag', image)`, etc in the `trainer._train_epoch` method.
-`add_something()` methods in this template are basically wrappers for those of `tensorboardX.SummaryWriter` and `torch.utils.tensorboard.SummaryWriter` modules. 
+[PRUNING] Step 3: Evaluate final solution on validation set.
 
-**Note**: You don't have to specify current steps, since `WriterTensorboard` class defined at `logger/visualization.py` will track current steps.
+final validation accuracy: 0.87220
 
-## Contribution
-Feel free to contribute any kind of function or enhancement, here the coding style follows PEP8
+---------------------------------------------
+Network pruning results.
+Baseline float32: 0.89844
+Kernel pruning results:
+Layer conv1    | Conv     | 0/8 kernels pruned   | 0.00% parameters pruned
+Layer conv2    | Conv     | 1/8 kernels pruned   | 12.50% parameters pruned
+Layer fc3      | Linear   | 32/64 kernels pruned | 50.00% parameters pruned
+Layer fc4      | Linear   | 0/4 kernels pruned   | 0.00% parameters pruned
+Total pruning rate: 47.00%
+Accuracy: 0.87220
+---------------------------------------------
+```
 
-Code should pass the [Flake8](http://flake8.pycqa.org/en/latest/) check before committing.
+The pruning method iteratively removes kernels until the user-defined error margin is exceeded. In this example 47% of all weights could be removed within a 3% error penalty.
 
-## TODOs
+The quantization solution is saved in a `pruning.yml` file. To apply the test set to this solution try
 
-- [ ] Multiple optimizers
-- [ ] Support more tensorboard functions
-- [x] Using fixed random seed
-- [x] Support pytorch native tensorboard
-- [x] `tensorboardX` logger support
-- [x] Configurable logging layout, checkpoint naming
-- [x] Iteration-based training (instead of epoch-based)
-- [x] Adding command line option for fine-tuning
+  ```
+  python3 test.py -r saved/models/KeywordLeNet5Clone_exp1/.../model_best.pth \
+    -p saved/models/KeywordLeNet5Clone_exp1/.../pruning.yml
+  ```
+or
+  ```
+  python3 test.py -r saved/models/KeywordLeNet5Clone_exp1/.../model_best.pth \
+    -q saved/models/KeywordLeNet5Clone_exp1/.../quantization.yml \
+    -p saved/models/KeywordLeNet5Clone_exp1/.../pruning.yml
+  ```
+to combine the pruning solution with the quantization solution.
 
-## License
-This project is licensed under the MIT License. See  LICENSE for more details
+The accuracy on the test set should be approximately the same as the validation accuracy.
 
-## Acknowledgements
-This project is inspired by the project [Tensorflow-Project-Template](https://github.com/MrGemy95/Tensorflow-Project-Template) by [Mahmoud Gemy](https://github.com/MrGemy95)
+The pruning method is based on the minimum weight method from [Molchanov et al. (2017)](https://arxiv.org/abs/1611.06440).
+
+### Finetuning
+
+The gains of performing quantization and pruning can be evaluated using the profiling script i.e.
+
+  ```
+  python3 profile.py -r saved/models/KeywordLeNet5Clone_exp1/.../model_best.pth \
+	-q saved/models/KeywordLeNet5Clone_exp1/.../quantization.yml \
+	-p saved/models/KeywordLeNet5Clone_exp1/.../pruning.yml
+  ```
+leads to something like
+```console
+...
+MACs/classification: 160114
+Number of Parameters: 7908
+Model Size:
+  - Weights: 30kB
+  - Activations: 75kB
+Accuracy: 84.75%
+  ```
+
+As can be seen, the number of MACs and Model Size is reduced significantly. However, in the process accuracy suffered quite a bit.
+
+We can deploy finetuning or retraining to recover some of the lost accuracy during quantization and pruning. Try
+
+  ```
+python3 train.py -r saved/models/KeywordLeNet5Clone_exp1/.../model_best.pth \
+	-q saved/models/KeywordLeNet5Clone_exp1/.../quantization.yml \
+	-p saved/models/KeywordLeNet5Clone_exp1/.../pruning.yml
+  ```
+  
+Finetuning will retrain the remaining weights of the pruned network. Fixed-point finetuning updates the weights based on a quantized forward pass. The backwards pass remains high-precision to allow the small gradients to not get lost in the quantization noise.
+
+### Deployment
+The procedures in this repository simulate the behavior of a pruned network by masking zero-ed kernels or simulating fixed-point arithmetic. However, the resulting solutions can be converted to integer-based solutions for mobile and embedded platforms. Since the mapping procedure from PyTorch models to integer-based fixed-point code is mostly a cumbersome engineering task, we did not cover these things.

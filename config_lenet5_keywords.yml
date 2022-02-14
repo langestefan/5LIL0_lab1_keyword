@@ -1,0 +1,50 @@
+name: KeywordLeNet5Clone_exp1 # training session name
+n_gpu: 1 # number of GPUs to use for training
+deterministic: true
+
+arch:
+    type: KeywordLeNet5Clone # name of model architecture to train
+    args: {}
+
+data_loader:
+    type: KeywordDataLoader # selecting data loader
+    args:
+        data_dir: data/KeywordsDataset
+        batch_size: 512 # training batch size
+        shuffle: true # reshuffle training set every epoch
+        seed: 101 # training set shuffle seed (to replicate the same run)
+        validation_split: None # split ratio (unused for keywords data; splits are fixed)
+        num_workers: 4 # number of cpu threads to be used for data loading 
+
+optimizer:
+  type: Adam # gradient-based optimization algorithm (basically the update rule of the weights)
+  args:
+    lr: 0.001 # hyper-parmeters for optimizer (see https://pytorch.org/docs for more)
+
+loss: nll_loss # loss function
+
+metrics: ["top1"] # list of metrics to evaluate (see model/metric.py)
+
+lr_scheduler:
+    type: StepLR # learning rate scheduler (see https://pytorch.org/docs for more)
+    args:
+        step_size: 50
+        gamma: 0.1
+
+trainer:
+    epochs: 15 # train for 15 epochs
+    save_dir: saved/
+    save_period: 1 # save checkpoint after every epoch
+    verbosity: 2
+    monitor: min val_loss
+    early_stop: 10
+    tensorboard: false # tensorboardx can be used for visualization (note: requires additional packages!)
+
+optimization: # see optimization/quantization.py and optimization/pruning.py for details
+    quantizer:
+        error_margin: 15 # maximum error margin (%)
+        decrement: "lambda bw: bw//2" # bitwidth decrement for optimization strategy
+    pruner:
+        error_margin: 3 # maximum error margin (%)
+    finetuning:
+        epochs: 10 # retrain for 10 additional epochs

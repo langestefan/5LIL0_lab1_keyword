@@ -1,21 +1,48 @@
+import torch
 import numpy as np
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
-from torch.utils.data.sampler import SubsetRandomSampler
+from torch.utils.data.sampler import Sampler, SequentialSampler
+
+
+class SubsetSeedSampler(Sampler):
+    """Samples elements based on seed value from a given list of indices, without replacement.
+
+    Arguments:
+        indices (sequence): a sequence of indices
+        seed (integer): seed for deterministic sequence
+    """
+
+    def __init__(self, indices, seed):
+        self.seed = seed % 4294967295 # otherwise seed gets too large
+        self.indices = indices
+
+    def __iter__(self):
+        # every iterator call the seed gets incremented (once every epoch)
+        self.seed = (self.seed + 1) % 4294967295
+        torch.manual_seed(self.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(self.seed)
+        return (self.indices[i] for i in torch.randperm(len(self.indices)))
+
+    def __len__(self):
+        return len(self.indices)
 
 
 class BaseDataLoader(DataLoader):
     """
     Base class for all data loaders
     """
-    def __init__(self, dataset, batch_size, shuffle, validation_split, num_workers, collate_fn=default_collate):
+    def __init__(self, dataset, batch_size, shuffle, seed, validation_split, num_workers, collate_fn=default_collate):
         self.validation_split = validation_split
         self.shuffle = shuffle
-
+        self.seed = seed
+        
         self.batch_idx = 0
         self.n_samples = len(dataset)
-
-        self.sampler, self.valid_sampler = self._split_sampler(self.validation_split)
+        
+        if not (hasattr(self, 'sampler') and hasattr(self, 'valid_sampler')): # overwrite if not exist yet
+            self.sampler, self.valid_sampler = self._split_sampler(self.validation_split)
 
         self.init_kwargs = {
             'dataset': dataset,
@@ -30,11 +57,6 @@ class BaseDataLoader(DataLoader):
         if split == 0.0:
             return None, None
 
-        idx_full = np.arange(self.n_samples)
-
-        np.random.seed(0)
-        np.random.shuffle(idx_full)
-
         if isinstance(split, int):
             assert split > 0
             assert split < self.n_samples, "validation set size is configured to be larger than entire dataset."
@@ -42,11 +64,16 @@ class BaseDataLoader(DataLoader):
         else:
             len_valid = int(self.n_samples * split)
 
+        idx_full = np.arange(self.n_samples)
         valid_idx = idx_full[0:len_valid]
         train_idx = np.delete(idx_full, np.arange(0, len_valid))
-
-        train_sampler = SubsetRandomSampler(train_idx)
-        valid_sampler = SubsetRandomSampler(valid_idx)
+        
+        valid_sampler = SequentialSampler(valid_idx)
+        
+        if self.shuffle:
+            train_sampler = SubsetSeedSampler(train_idx, self.seed) # shuffle every epoch
+        else:
+            train_sampler = SequentialSampler(train_idx)
 
         # turn off shuffle option which is mutually exclusive with sampler
         self.shuffle = False
