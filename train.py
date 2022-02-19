@@ -13,7 +13,7 @@ from optimization.utility.helpers import apply_quantization, apply_pruning
 def main(config):
     logger = config.get_logger('train')
 
-    # make training procedure reproduceable
+    # make training procedure reproducible
     if config['deterministic']:
         torch.backends.cudnn.deterministic = True # slightly reduces throughput
         seed = 101 # for model weights initialization
